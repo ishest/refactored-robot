@@ -263,6 +263,16 @@ accuracy = None
 
 if st.button("Predict"):
     df = download_stock_data(ticker, start_date, end_date)
+
+    # Monte Carlo Simulation chart
+    st.title('Monte Carlo Simulations')
+    monte_carlo_chart = Monte_carlo(df)
+    st.pyplot(plot_monte_carlo(monte_carlo_chart[0], monte_carlo_chart[1],
+                               monte_carlo_chart[2], monte_carlo_chart[3]))
+    st.text(f'Upper bound of the price in 7 trading days: {monte_carlo_chart[1][-1]}')
+    st.text(f'Lower bound of the price in 7 trading days: {monte_carlo_chart[2][-1]}')
+
+
     predictions, accuracy = predict_stock_price(df, model_choice)
     final_capital = backtest(df, predictions)
     returns = generate_returns_series(df, predictions)
@@ -278,10 +288,7 @@ if st.button("Predict"):
     # Display backtest statistics
     display_backtest_statistics(returns)
 
-    # Monte Carlo Simulation chart
-    monte_carlo_chart = Monte_carlo(df)
-    st.pyplot(plot_monte_carlo(monte_carlo_chart[0], monte_carlo_chart[1],
-                               monte_carlo_chart[2], monte_carlo_chart[3]))
+
 
 if accuracy is not None:
     # Model Accuracy and Backtest result
@@ -289,55 +296,3 @@ if accuracy is not None:
     st.write(f"**Model Accuracy:** {accuracy * 100:.2f}%")
     st.write(f"**Backtest Result:** ${final_capital:.2f}")
 
-# if st.button("Predict"):
-#     df = download_stock_data(ticker, start_date, end_date)
-#     predictions, accuracy = predict_stock_price(df, model_choice)
-#     final_capital = backtest(df, predictions)
-#     returns = generate_returns_series(df, predictions)
-#
-#     # Stock Price History chart
-#     stock_chart = plot_stock_data(df)
-#     col1.plotly_chart(stock_chart, use_container_width=True)
-#
-#     # Backtest Results chart
-#     backtest_chart = plot_backtest_results(df, predictions)
-#     col2.plotly_chart(backtest_chart, use_container_width=True)
-#
-#     # Display backtest statistics
-#     display_backtest_statistics(returns)
-#
-#     accuracy = None
-#
-#     if accuracy is not None:
-#         # Model Accuracy and Backtest result
-#         st.markdown("---")
-#         st.write(f"**Model Accuracy:** {accuracy * 100:.2f}%")
-#         st.write(f"**Backtest Result:** ${final_capital:.2f}")
-
-        # # Model Accuracy and Backtest result
-        # st.markdown("---")
-        # st.write(f"**Model Accuracy:** {accuracy * 100:.2f}%")
-        # st.write(f"**Backtest Result:** ${final_capital:.2f}")
-        #
-        # # Display backtest statistics
-        # display_backtest_statistics(returns)
-
-# Layout
-# col1, col2 = st.columns(2)
-#
-# # Stock Price History chart
-# stock_chart = plot_stock_data(df)
-# col1.plotly_chart(stock_chart, use_container_width=True)
-#
-# # Backtest Results chart
-# backtest_chart = plot_backtest_results(df, predictions)
-# col2.plotly_chart(backtest_chart, use_container_width=True)
-#
-# Model Accuracy and Backtest result
-# st.markdown("---")
-# st.write(f"**Model Accuracy:** {accuracy * 100:.2f}%")
-# st.write(f"**Backtest Result:** ${final_capital:.2f}")
-# #
-# # Display backtest statistics
-# returns = generate_returns_series(df, predictions)
-# display_backtest_statistics(returns)
