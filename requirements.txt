@@ -7,6 +7,7 @@ backcall==0.2.0
 backports.zoneinfo==0.2.1
 beautifulsoup4==4.12.0
 blinker==1.5
+Boruta==0.3
 cachetools==5.3.0
 certifi==2022.12.7
 cffi==1.15.1
@@ -40,12 +41,13 @@ matplotlib==3.7.1
 matplotlib-inline==0.1.6
 mdurl==0.1.2
 multitasking==0.0.11
-numpy==1.24.2
+numpy==1.23.5
 packaging==23.0
 pandas==1.5.3
 pandas-datareader==0.10.0
 pandas-ta==0.3.14b0
 parso==0.8.3
+patsy==0.5.3
 pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==9.4.0
@@ -77,6 +79,7 @@ sklearn==0.0.post1
 smmap==5.0.0
 soupsieve==2.4
 stack-data==0.6.2
+statsmodels==0.13.5
 streamlit==1.20.0
 tenacity==8.2.2
 threadpoolctl==3.1.0
@@ -91,5 +94,6 @@ urllib3==1.26.15
 validators==0.20.0
 wcwidth==0.2.6
 webencodings==0.5.1
+xgboost==1.7.5
 yfinance==0.2.14
 zipp==3.15.0
