@@ -1,7 +1,38 @@
 import streamlit as st
 import pandas as pd
+import pandas_ta as ta
+from sklearn.preprocessing import LabelEncoder
+
+
 import numpy as np
 from scipy.stats import norm
+import pickle
+from xgboost import XGBClassifier
+
+# metrics
+from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, auc, roc_curve, RocCurveDisplay
+
+# import classifiers
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
+from sklearn.neighbors import KNeighborsClassifier
+
+from sklearn.ensemble import StackingClassifier, GradientBoostingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
+from sklearn.model_selection import RandomizedSearchCV
+
+# import boruta
+from boruta import BorutaPy
+
+# warnings
+import warnings
+warnings.filterwarnings('ignore')
 
 import yfinance as yf
 
@@ -14,9 +45,36 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
 import pyfolio as pf
-import numpy as np
 import io
 import contextlib
+
+# sklearn imports
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import TimeSeriesSplit, cross_val_score
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+
+# metrics
+from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import ConfusionMatrixDisplay, auc, roc_curve, RocCurveDisplay
+
+# import classifiers
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
+
+from scipy.stats import norm
+from scipy.optimize import minimize
+import statsmodels.api as sm
+# from prophet import Prophet
+# from prophet.plot import plot_plotly, add_changepoints_to_plot
+#
+
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import TimeSeriesSplit
+
+
 def generate_returns_series(df, predictions):
     df_backtest = df.iloc[-len(predictions):].copy()
     df_backtest['Predictions'] = predictions
@@ -32,6 +90,7 @@ def generate_returns_series(df, predictions):
             returns.append(0)
 
     return pd.Series(returns, index=df_backtest.index[:-1])
+
 
 def display_backtest_statistics(returns):
     st.subheader("Backtest Statistics")
@@ -126,21 +185,159 @@ def download_stock_data(ticker, start, end):
     return df
 
 
-def predict_stock_price(df, model_choice):
-    df['Label'] = df['Close'].shift(-5)
-    df.dropna(inplace=True)
-    X = df.drop(['Label'], axis=1)
-    y = (df['Label'] > df['Close']).astype(int)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+def data_processing():
+    df = yf.download('2380.SR')
+    df_pct = df[['Adj Close']].pct_change().dropna()
+    df.ta.strategy('All')
+    df = df.drop(['DPO_20', 'ISA_9', 'ISB_26', 'ITS_9', 'IKS_26', 'ICS_26', 'INC_1'], axis=1)
+
+    data = df.copy()
+
+    n = 7
+    # define target (label)
+    pct_change = data['Close'].pct_change(n)
+    data['predict'] = np.where(pct_change.shift(-n) > 0, 1, 0)
+
+    # drop unwanted columns
+    data = data.drop(['HILOl_13_21', 'HILOs_13_21', 'PSARl_0.02_0.2', 'PSARs_0.02_0.2', 'PSARaf_0.02_0.2',
+                      'QQEl_14_5_4.236', 'QQEs_14_5_4.236', 'SUPERTl_7_3.0', 'SUPERTs_7_3.0',
+                      'Open', 'High', 'Low', 'Volume'], axis=1)
+
+    data = data[200:]
+
+    # backfill columns to address missing values
+    data = data.bfill(axis=1)
+    data = data[:-n]  # to take care of n-days ahead prediction
+
+    c = data['predict'].value_counts()
+
+    # class weight function
+    def cwts(dfs):
+        c0, c1 = np.bincount(dfs['predict'])
+        w0 = (1 / c0) * (len(df)) / 2
+        w1 = (1 / c1) * (len(df)) / 2
+        return {0: w0, 1: w1}
+
+    # check class weights
+    class_weight = cwts(data)
+
+    # With the calculated weights, both classes gain equal weight
+    class_weight[0] * c[0], class_weight[1] * c[1]
+
+
+
+    X = data.drop('predict', axis=1)
+    feature_names = X.columns
+
+    features = pd.read_csv('feature_list.csv')['Feature'].to_list()
+    X = X[features]
+
+    y = data['predict'].values
+    # pandas-ta converts all dtype to objects
+    y = y.astype(int)
+
+    # Always keep shuffle = False for financial time series
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
+
+    # convert to array
+    X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
+
+    # # perform normalization
+    scaler = MinMaxScaler()
+    scaled_train = scaler.fit_transform(X_train)
+    scaled_test = scaler.transform(X_test)
+
+
+
+
+
+    # # # define random forest classifier
+    # # forest = RandomForestClassifier(n_jobs=-1,
+    # #                                 class_weight=cwts(data),
+    # #                                 random_state=42,
+    # #                                 max_depth=5)
+    # #
+    # # # train the model
+    # # forest.fit(scaled_train, y_train)
+    # #
+    # # # define Boruta feature selection method
+    # # feat_selector = BorutaPy(forest, n_estimators='auto', verbose=2, random_state=0)
+    # #
+    # # # find all relevant features
+    # # # takes input in array format not as dataframe
+    # # feat_selector.fit(scaled_train, y_train)
+    # #
+    # # # call transform() on X to filter it down to selected features
+    # # X_filtered = feat_selector.transform(scaled_train)
+    # #
+    # # # zip my names, ranks, and decisions in a single iterable
+    # # feature_ranks = list(zip(feature_names,
+    # #                          feat_selector.ranking_,
+    # #                          feat_selector.support_))
+    # #
+    # # # iterate through and print out the results
+    # # for feat in feature_ranks:
+    # #     print(f'Feature: {feat[0]:<30} Rank: {feat[1]:<5} Keep: {feat[2]}')
+    # #
+    # # selected_rf_features = pd.DataFrame({'Feature': feature_names,
+    # #                                      'Ranking': feat_selector.ranking_})
+    # #
+    # # # selected_rf_features#.sort_values(by='Ranking')
+    # #
+    # # selected_rf_features[selected_rf_features['Ranking'] == 1]
+    #
+    # X_test_filtered = feat_selector.transform(scaled_test)
+
+    return scaled_train, scaled_test, y_train, y_test
+
+
+def predict_stock_price(df, data_processing, model_choice):
+    # df['Label'] = df['Close'].shift(-5)
+    # df.dropna(inplace=True)
+    # X = df.drop(['Label'], axis=1)
+    # y = (df['Label'] > df['Close']).astype(int)
+    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     if model_choice == "RandomForest":
-        model = RandomForestClassifier()
+        # Load the model
+        with open('models/forest.pkl', 'rb') as f:
+            model = pickle.load(f)
     elif model_choice == "KNN":
-        model = KNeighborsClassifier()
+        with open('models/knn.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "Boosting":
+        with open('models/boosting.pkl', 'rb') as f:
+            model = pickle.load(f)
+            model.fit(data_processing[0], data_processing[2])
+    elif model_choice == "XGboost":
+        with open('models/gboost.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "logReg":
+        with open('models/logReg.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "Decision Tree":
+        with open('models/decision_tree.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "stacking":
+        with open('models/stacking.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "stacking1":
+        with open('models/stacking1.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "stacking2":
+        with open('models/stacking2.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "voting":
+        with open('models/voting.pkl', 'rb') as f:
+            model = pickle.load(f)
+    elif model_choice == "SVM":
+        with open('models/svm.pkl', 'rb') as f:
+            model = pickle.load(f)
 
-    model.fit(X_train, y_train)
-    predictions = model.predict(X_test)
-    accuracy = accuracy_score(y_test, predictions)
+
+    # model.fit(data_processing, y_train)
+    predictions = model.predict(data_processing[1])
+    accuracy = accuracy_score(data_processing[3], predictions)
 
     return predictions, accuracy
 
@@ -156,7 +353,7 @@ def backtest(df, predictions):
 
     for idx, row in df_backtest.iterrows():
         if row['Buy_Signal']:
-            buy_amount = capital * 0.1
+            buy_amount = capital * 1
             shares += buy_amount / row['Close']
             capital -= buy_amount
 
@@ -238,7 +435,7 @@ def plot_monte_carlo(S, S_interval_1, S_interval_2, expected_returns):
     plt.plot(S_interval_1, label='upper bound')
     plt.plot(S_interval_2, label='lower bound', c='orange')
     plt.plot(expected_returns, c='red', label='expected price', alpha=1)
-    plt.title('Price of Athe Rabigh Refining and Petrochemical Company stock 7 days from now: 95% Confidence Interval',
+    plt.title('Price of Rabigh Refining and Petrochemical Company stock 7 days from now: 95% Confidence Interval',
               fontweight='bold', c='black')
     plt.xlabel('Time', fontsize=18)
     plt.ylabel('Price', fontsize=18)
@@ -257,12 +454,19 @@ with st.sidebar:
     ticker = st.text_input("Enter stock ticker:", "2380.SR")
     start_date = st.date_input("Start date:", datetime.now() - timedelta(days=365*10))
     end_date = st.date_input("End date:", datetime.now())
-    model_choice = st.selectbox("Select model:", ("RandomForest", "KNN"))
+    model_choice = st.selectbox("Select model:", ("RandomForest", "KNN", "SVM", "logReg",
+                                                  # "XGboost", "Boosting",
+                                                  "Decision Tree",))
+                                                  # "stacking",
+                                                  # "stacking1", "stacking2", "voting"))
 
 accuracy = None
 
 if st.button("Predict"):
+    # print(pd.read_csv('feature_list.csv')['Feature'].to_list())
     df = download_stock_data(ticker, start_date, end_date)
+    print(df)
+    data_process = data_processing()
 
     # Monte Carlo Simulation chart
     st.title('Monte Carlo Simulations')
@@ -273,7 +477,7 @@ if st.button("Predict"):
     st.text(f'Lower bound of the price in 7 trading days: {monte_carlo_chart[2][-1]}')
 
 
-    predictions, accuracy = predict_stock_price(df, model_choice)
+    predictions, accuracy = predict_stock_price(df, data_process, model_choice)
     final_capital = backtest(df, predictions)
     returns = generate_returns_series(df, predictions)
 
@@ -294,5 +498,5 @@ if accuracy is not None:
     # Model Accuracy and Backtest result
     st.markdown("---")
     st.write(f"**Model Accuracy:** {accuracy * 100:.2f}%")
-    st.write(f"**Backtest Result:** ${final_capital:.2f}")
+    # st.write(f"**Backtest Result:** ${final_capital:.2f}")
 
