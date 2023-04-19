@@ -193,7 +193,7 @@ def data_processing():
 
     data = df.copy()
 
-#     n = 7
+    n = 7
     # define target (label)
     pct_change = data['Close'].pct_change(n)
     data['predict'] = np.where(pct_change.shift(-n) > 0, 1, 0)
@@ -207,7 +207,7 @@ def data_processing():
 
     # backfill columns to address missing values
     data = data.bfill(axis=1)
-    data = data[:-n]  # to take care of n-days ahead prediction
+#     data = data[:-n]  # to take care of n-days ahead prediction
 
     c = data['predict'].value_counts()
 
