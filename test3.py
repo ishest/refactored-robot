@@ -193,7 +193,7 @@ def data_processing():
 
     data = df.copy()
 
-    n = 7
+#     n = 7
     # define target (label)
     pct_change = data['Close'].pct_change(n)
     data['predict'] = np.where(pct_change.shift(-n) > 0, 1, 0)
@@ -498,5 +498,5 @@ if accuracy is not None:
     # Model Accuracy and Backtest result
     st.markdown("---")
     st.write(f"**Model Accuracy:** {accuracy * 100:.2f}%")
-    # st.write(f"**Backtest Result:** ${final_capital:.2f}")
+    st.write(f"**Model Signal is:** {predictions[-1]}")
 
