@@ -77,7 +77,7 @@ scipy==1.10.1
 seaborn==0.12.2
 semver==2.13.0
 six==1.16.0
-sklearn==0.0.post1
+scikit-learn
 smmap==5.0.0
 soupsieve==2.4
 stack-data==0.6.2
