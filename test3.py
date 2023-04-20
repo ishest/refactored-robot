@@ -2,33 +2,13 @@ import streamlit as st
 import pandas as pd
 import pandas_ta as ta
 from sklearn.preprocessing import LabelEncoder
+from arch import arch_model
 
 
 import numpy as np
 from scipy.stats import norm
 import pickle
-from xgboost import XGBClassifier
 
-# metrics
-from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.metrics import ConfusionMatrixDisplay, auc, roc_curve, RocCurveDisplay
-
-# import classifiers
-from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
-from sklearn.neighbors import KNeighborsClassifier
-
-from sklearn.ensemble import StackingClassifier, GradientBoostingClassifier, RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import SVC
-from xgboost import XGBClassifier
-from sklearn.model_selection import RandomizedSearchCV
-
-# import boruta
-from boruta import BorutaPy
 
 # warnings
 import warnings
@@ -37,10 +17,7 @@ warnings.filterwarnings('ignore')
 import yfinance as yf
 
 from datetime import datetime, timedelta
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.graph_objects as go
@@ -49,30 +26,17 @@ import io
 import contextlib
 
 # sklearn imports
-from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import TimeSeriesSplit, cross_val_score
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+
 
 # metrics
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.metrics import ConfusionMatrixDisplay, auc, roc_curve, RocCurveDisplay
 
 # import classifiers
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, StackingClassifier
 
 from scipy.stats import norm
-from scipy.optimize import minimize
-import statsmodels.api as sm
-# from prophet import Prophet
-# from prophet.plot import plot_plotly, add_changepoints_to_plot
-#
 
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import TimeSeriesSplit
 
 
 def generate_returns_series(df, predictions):
@@ -101,42 +65,22 @@ def display_backtest_statistics(returns):
     st.write(summary_stats)
 
     # Plot cumulative returns
-    st.subheader("Cumulative Returns")
-    fig_cumulative_returns, _ = plt.subplots()
-    pf.plot_returns(returns, ax=plt.gca())
-    st.pyplot(fig_cumulative_returns)
-
-    # Plot rolling volatility
-    st.subheader("Rolling Volatility")
-    fig_rolling_volatility, _ = plt.subplots()
-    pf.plotting.plot_rolling_volatility(returns, ax=plt.gca())
-    st.pyplot(fig_rolling_volatility)
+    # st.subheader("Cumulative Returns")
+    # fig_cumulative_returns, _ = plt.subplots()
+    # pf.plot_returns(returns, ax=plt.gca())
+    # st.pyplot(fig_cumulative_returns)
+    #
+    # # Plot rolling volatility
+    # st.subheader("Rolling Volatility")
+    # fig_rolling_volatility, _ = plt.subplots()
+    # pf.plotting.plot_rolling_volatility(returns, ax=plt.gca())
+    # st.pyplot(fig_rolling_volatility)
 
     # Plot monthly returns heatmap
-    st.subheader("Monthly Returns Heatmap")
-    fig_monthly_heatmap, _ = plt.subplots()
-    pf.plotting.plot_monthly_returns_heatmap(returns, ax=plt.gca())
-    st.pyplot(fig_monthly_heatmap)
-
-# def display_backtest_statistics(returns):
-#     st.subheader("Backtest Statistics")
-#
-#     # Calculate and display summary statistics
-#     st.write("Summary statistics:")
-#     summary_stats = pf.timeseries.perf_stats(returns)
-#     st.write(summary_stats)
-#
-#     # Plot cumulative returns
-#     st.subheader("Cumulative Returns")
-#     fig_cumulative_returns = pf.plot_returns(returns)
-#     st.write(fig_cumulative_returns)
-#
-#     # Plot rolling volatility and monthly returns heatmap using the tears module
-#     with io.StringIO() as buf, contextlib.redirect_stdout(buf):
-#         pf.create_simple_tear_sheet(returns, live_start_date=None, benchmark_rets=None)
-#         output = buf.getvalue()
-#
-#     st.write(output)
+    # st.subheader("Monthly Returns Heatmap")
+    # fig_monthly_heatmap, _ = plt.subplots()
+    # pf.plotting.plot_monthly_returns_heatmap(returns, ax=plt.gca())
+    # st.pyplot(fig_monthly_heatmap)
 
 
 
@@ -207,7 +151,8 @@ def data_processing():
 
     # backfill columns to address missing values
     data = data.bfill(axis=1)
-#     data = data[:-n]  # to take care of n-days ahead prediction
+    # data_new = data.copy()
+    # data = data[:-n]  # to take care of n-days ahead prediction
 
     c = data['predict'].value_counts()
 
@@ -223,7 +168,6 @@ def data_processing():
 
     # With the calculated weights, both classes gain equal weight
     class_weight[0] * c[0], class_weight[1] * c[1]
-
 
 
     X = data.drop('predict', axis=1)
@@ -246,47 +190,6 @@ def data_processing():
     scaler = MinMaxScaler()
     scaled_train = scaler.fit_transform(X_train)
     scaled_test = scaler.transform(X_test)
-
-
-
-
-
-    # # # define random forest classifier
-    # # forest = RandomForestClassifier(n_jobs=-1,
-    # #                                 class_weight=cwts(data),
-    # #                                 random_state=42,
-    # #                                 max_depth=5)
-    # #
-    # # # train the model
-    # # forest.fit(scaled_train, y_train)
-    # #
-    # # # define Boruta feature selection method
-    # # feat_selector = BorutaPy(forest, n_estimators='auto', verbose=2, random_state=0)
-    # #
-    # # # find all relevant features
-    # # # takes input in array format not as dataframe
-    # # feat_selector.fit(scaled_train, y_train)
-    # #
-    # # # call transform() on X to filter it down to selected features
-    # # X_filtered = feat_selector.transform(scaled_train)
-    # #
-    # # # zip my names, ranks, and decisions in a single iterable
-    # # feature_ranks = list(zip(feature_names,
-    # #                          feat_selector.ranking_,
-    # #                          feat_selector.support_))
-    # #
-    # # # iterate through and print out the results
-    # # for feat in feature_ranks:
-    # #     print(f'Feature: {feat[0]:<30} Rank: {feat[1]:<5} Keep: {feat[2]}')
-    # #
-    # # selected_rf_features = pd.DataFrame({'Feature': feature_names,
-    # #                                      'Ranking': feat_selector.ranking_})
-    # #
-    # # # selected_rf_features#.sort_values(by='Ranking')
-    # #
-    # # selected_rf_features[selected_rf_features['Ranking'] == 1]
-    #
-    # X_test_filtered = feat_selector.transform(scaled_test)
 
     return scaled_train, scaled_test, y_train, y_test
 
@@ -339,7 +242,12 @@ def predict_stock_price(df, data_processing, model_choice):
     predictions = model.predict(data_processing[1])
     accuracy = accuracy_score(data_processing[3], predictions)
 
+
+
     return predictions, accuracy
+
+
+predictions = []
 
 
 def backtest(df, predictions):
@@ -361,23 +269,6 @@ def backtest(df, predictions):
     return final_capital
 
 
-# ------------------------------   Modeling the Returns    ------------------------------#
-# ------------------------------ Parameters and Variables  ------------------------------#
-# mu = Daily Expected Return: calculated as the mean of the daily returns.
-# var = Variance of the data.
-# drift = mu - 0.5*var
-# desvest = Standar Deviation of the Data.
-# n_simulations = desired number of simulations.
-# days = the number of days we are going to simulate.
-# epsilon = stochastic component generated by the inverse of the normal distribution.
-# returns = simulated daily returns.
-# returns_interval_1 = interval that is 1.96 standard deviation from its mean.
-# returns_interval_2 = interval that is -1.96 standard deviation from its mean.
-# expected_returns = expected returns vector.
-# S0 = the initial value of the stock
-# S = price of the stock at time t
-# S_interval_1 = price of the stock 1 year from now of interval 1.
-# S_interval_2 = price of the stock 1 year from now of interval 2.
 
 # ------------------------------        Parameters        ------------------------------#
 def Monte_carlo(df):
@@ -454,13 +345,38 @@ with st.sidebar:
     ticker = st.text_input("Enter stock ticker:", "2380.SR")
     start_date = st.date_input("Start date:", datetime.now() - timedelta(days=365*10))
     end_date = st.date_input("End date:", datetime.now())
-    model_choice = st.selectbox("Select model:", ("RandomForest", "KNN", "SVM", "logReg",
+    model_choice = st.selectbox("Select model:", ("RandomForest",
+                                                  # "KNN", "SVM", "logReg",
                                                   # "XGboost", "Boosting",
-                                                  "Decision Tree",))
+                                                  # "Decision Tree",
+                                                  ))
                                                   # "stacking",
                                                   # "stacking1", "stacking2", "voting"))
 
 accuracy = None
+
+
+def garch(df):
+    df = df['Adj Close']
+
+    # Step 2: Install the necessary libraries
+    # !pip install yfinance
+    # !pip install arch
+
+    # Step 3: Prepare the data
+    df = 100 * df.pct_change().dropna()
+
+    # Step 4: Fit the eGARCH model
+    model = arch_model(df, vol='EGARCH', p=1, q=1)
+    results = model.fit()
+
+    # Step 5: Predict the 3-day volatility
+    forecast = results.forecast(horizon=7, method='simulation', simulations=1000)
+    mean_volatility = np.mean(forecast.simulations.residual_variances[-1]) ** 0.5
+    print("Predicted 7-day volatility:", mean_volatility)
+
+    return mean_volatility
+
 
 if st.button("Predict"):
     # print(pd.read_csv('feature_list.csv')['Feature'].to_list())
@@ -473,13 +389,14 @@ if st.button("Predict"):
     monte_carlo_chart = Monte_carlo(df)
     st.pyplot(plot_monte_carlo(monte_carlo_chart[0], monte_carlo_chart[1],
                                monte_carlo_chart[2], monte_carlo_chart[3]))
-    st.text(f'Upper bound of the price in 7 trading days: {monte_carlo_chart[1][-1]}')
-    st.text(f'Lower bound of the price in 7 trading days: {monte_carlo_chart[2][-1]}')
+    st.text(f'Upper bound of the price in 7 trading days: {round(monte_carlo_chart[1][-1],2)}')
+    st.text(f'Lower bound of the price in 7 trading days: {round(monte_carlo_chart[2][-1], 2)}')
 
 
     predictions, accuracy = predict_stock_price(df, data_process, model_choice)
-    final_capital = backtest(df, predictions)
+    # final_capital = backtest(df, predictions)
     returns = generate_returns_series(df, predictions)
+
 
     # Stock Price History chart
     stock_chart = plot_stock_data(df)
@@ -492,11 +409,41 @@ if st.button("Predict"):
     # Display backtest statistics
     display_backtest_statistics(returns)
 
+    garch_ = garch((df))
+    last_price = df['Adj Close'][-1]
+    if predictions[-1] == 1:
+        pred_price = last_price*(1+garch_/100)
+        signal = 'BUY'
+    else:
+        pred_price = last_price*(1-garch_/100)
+        signal = 'SELL or do nothing'
+
+    print(predictions)
 
 
 if accuracy is not None:
     # Model Accuracy and Backtest result
+    st.title('Forecast info')
     st.markdown("---")
     st.write(f"**Model Accuracy:** {accuracy * 100:.2f}%")
-    st.write(f"**Model Signal is:** {predictions[-1]}")
+    st.write(f"**Model Signal is:** {signal}")
+    st.write(f"**Predicted Volatility using eGARCH Method is:** {round(garch_, 2)}%")
+    st.write(f"**The current price is:** {round(last_price,2)}")
+    st.write(f"**Predicted Price in 7 trading days is:** {round(pred_price, 2)}")
+    st.write("DISCLAIMER: The content provided on this website is for informational and "
+             "analytical purposes only and should not be construed as investment advice, "
+             "a recommendation, or an endorsement of any particular investment strategy, "
+             "security, or financial product. The analyses, opinions, and views expressed "
+             "on this website are solely those of the authors and contributors and do not "
+             "necessarily reflect the views of any third-party organizations or financial institutions."
+             "Investing in financial markets carries risks, and past performance does not "
+             "guarantee future results. Before making any investment decision, you should "
+             "consult with a qualified financial advisor, perform your own research and analysis, "
+             "and consider your risk tolerance, financial objectives, and individual circumstances."
+             "By using the information on this website, you acknowledge and agree that neither the "
+             "authors, contributors, nor the website owner can be held responsible or liable for any "
+             "losses, damages, or negative consequences arising from the use of the information provided "
+             "or any reliance on the accuracy, completeness, or timeliness of the content.")
+
+    # st.write(f"**Backtest Result:** ${final_capital:.2f}")
 
