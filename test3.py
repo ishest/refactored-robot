@@ -53,7 +53,8 @@ def display_backtest_statistics(returns):
     st.write("Summary statistics:")
     summary_stats = pf.timeseries.perf_stats(returns)
     st.write(summary_stats.loc[['Sharpe ratio', 'Annual volatility', 'Max drawdown', 'Annual return']])
-)
+
+
 
 
 def plot_stock_data(df):
