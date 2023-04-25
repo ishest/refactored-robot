@@ -1,12 +1,10 @@
 import streamlit as st
 import pandas as pd
-import pandas_ta as ta
-from sklearn.preprocessing import LabelEncoder
 from arch import arch_model
+import ta
 
 
 import numpy as np
-from scipy.stats import norm
 import pickle
 
 
@@ -19,21 +17,13 @@ import yfinance as yf
 from datetime import datetime, timedelta
 
 import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.graph_objects as go
 import pyfolio as pf
-import io
-import contextlib
-
-# sklearn imports
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, OneHotEncoder
 
 
 # metrics
-from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score
-
-# import classifiers
-
+from sklearn.metrics import accuracy_score
 from scipy.stats import norm
 
 from sklearn.model_selection import train_test_split
@@ -63,25 +53,6 @@ def display_backtest_statistics(returns):
     st.write("Summary statistics:")
     summary_stats = pf.timeseries.perf_stats(returns)
     st.write(summary_stats)
-
-    # Plot cumulative returns
-    # st.subheader("Cumulative Returns")
-    # fig_cumulative_returns, _ = plt.subplots()
-    # pf.plot_returns(returns, ax=plt.gca())
-    # st.pyplot(fig_cumulative_returns)
-    #
-    # # Plot rolling volatility
-    # st.subheader("Rolling Volatility")
-    # fig_rolling_volatility, _ = plt.subplots()
-    # pf.plotting.plot_rolling_volatility(returns, ax=plt.gca())
-    # st.pyplot(fig_rolling_volatility)
-
-    # Plot monthly returns heatmap
-    # st.subheader("Monthly Returns Heatmap")
-    # fig_monthly_heatmap, _ = plt.subplots()
-    # pf.plotting.plot_monthly_returns_heatmap(returns, ax=plt.gca())
-    # st.pyplot(fig_monthly_heatmap)
-
 
 
 def plot_stock_data(df):
@@ -129,81 +100,50 @@ def download_stock_data(ticker, start, end):
     return df
 
 
-def data_processing():
-    df = yf.download('2380.SR')
-    df_pct = df[['Adj Close']].pct_change().dropna()
-    df.ta.strategy('All')
-    df = df.drop(['DPO_20', 'ISA_9', 'ISB_26', 'ITS_9', 'IKS_26', 'ICS_26', 'INC_1'], axis=1)
+def data_processing(data):
+    def create_features(data, target_day=7):
+        data['Target'] = data['Close'].shift(-target_day) > data['Close']
+        data.dropna(inplace=True)
+        return data
 
-    data = df.copy()
+    def add_moving_averages(data, windows=[5, 10, 30]):
+        for window in windows:
+            data[f'SMA_{window}'] = data['Close'].rolling(window=window).mean()
+            data[f'EMA_{window}'] = data['Close'].ewm(span=window).mean()
+        return data
 
-    n = 7
-    # define target (label)
-    pct_change = data['Close'].pct_change(n)
-    data['predict'] = np.where(pct_change.shift(-n) > 0, 1, 0)
+    def add_rsi(data, window=14):
+        data['RSI'] = ta.momentum.RSIIndicator(data['Close'], window).rsi()
+        return data
 
-    # drop unwanted columns
-    data = data.drop(['HILOl_13_21', 'HILOs_13_21', 'PSARl_0.02_0.2', 'PSARs_0.02_0.2', 'PSARaf_0.02_0.2',
-                      'QQEl_14_5_4.236', 'QQEs_14_5_4.236', 'SUPERTl_7_3.0', 'SUPERTs_7_3.0',
-                      'Open', 'High', 'Low', 'Volume'], axis=1)
+    def add_macd(data, short_window=12, long_window=26, signal_window=9):
+        macd_indicator = ta.trend.MACD(data['Close'], short_window, long_window, signal_window)
+        data['MACD'] = macd_indicator.macd()
+        data['MACD_signal'] = macd_indicator.macd_signal()
+        data['MACD_diff'] = macd_indicator.macd_diff()
+        return data
 
-    data = data[200:]
+    def create_features(data, target_day=7):
+        data = add_moving_averages(data)
+        data = add_rsi(data)
+        data = add_macd(data)
+        data['Target'] = data['Close'].shift(-target_day) > data['Close']
+        data.dropna(inplace=True)
+        return data
 
-    # backfill columns to address missing values
-    data = data.bfill(axis=1)
-    # data_new = data.copy()
-    # data = data[:-n]  # to take care of n-days ahead prediction
+    data['Date'] = data.index
+    data.reset_index(drop=True, inplace=True)
 
-    c = data['predict'].value_counts()
+    data = create_features(data)
 
-    # class weight function
-    def cwts(dfs):
-        c0, c1 = np.bincount(dfs['predict'])
-        w0 = (1 / c0) * (len(df)) / 2
-        w1 = (1 / c1) * (len(df)) / 2
-        return {0: w0, 1: w1}
-
-    # check class weights
-    class_weight = cwts(data)
-
-    # With the calculated weights, both classes gain equal weight
-    class_weight[0] * c[0], class_weight[1] * c[1]
+    return data
 
 
-    X = data.drop('predict', axis=1)
-    feature_names = X.columns
-
-    features = pd.read_csv('feature_list.csv')['Feature'].to_list()
-    X = X[features]
-
-    y = data['predict'].values
-    # pandas-ta converts all dtype to objects
-    y = y.astype(int)
-
-    # Always keep shuffle = False for financial time series
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
-
-    # convert to array
-    X_train, X_test, y_train, y_test = np.array(X_train), np.array(X_test), np.array(y_train), np.array(y_test)
-
-    # # perform normalization
-    scaler = MinMaxScaler()
-    scaled_train = scaler.fit_transform(X_train)
-    scaled_test = scaler.transform(X_test)
-
-    return scaled_train, scaled_test, y_train, y_test
-
-
-def predict_stock_price(df, data_processing, model_choice):
-    # df['Label'] = df['Close'].shift(-5)
-    # df.dropna(inplace=True)
-    # X = df.drop(['Label'], axis=1)
-    # y = (df['Label'] > df['Close']).astype(int)
-    # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+def predict_stock_price(data_processing, model_choice):
 
     if model_choice == "RandomForest":
         # Load the model
-        with open('models/forest.pkl', 'rb') as f:
+        with open('models/stochy_ai_classifier.pkl', 'rb') as f:
             model = pickle.load(f)
     elif model_choice == "KNN":
         with open('models/knn.pkl', 'rb') as f:
@@ -239,12 +179,12 @@ def predict_stock_price(df, data_processing, model_choice):
 
 
     # model.fit(data_processing, y_train)
-    predictions = model.predict(data_processing[1])
-    accuracy = accuracy_score(data_processing[3], predictions)
+    predictions = model.predict(data_processing.drop(['Date', 'Close', 'Target'], axis=1))
+    accuracy = accuracy_score(data_processing['Target'], predictions)
 
+    preds = model.predict(data_processing.iloc[-1:].drop(['Date', 'Close', 'Target'], axis=1))
 
-
-    return predictions, accuracy
+    return predictions, accuracy, preds
 
 
 predictions = []
@@ -279,7 +219,9 @@ def Monte_carlo(df):
     desvest = df_pct.std()
     n_simulations = 1000
     days = np.arange(7)
+    # print(df)
     last_price = df['Adj Close'][-1]
+    print('last_price', last_price)
 
     S0 = last_price
 
@@ -343,7 +285,7 @@ col1, col2 = st.columns(2)
 
 with st.sidebar:
     ticker = st.text_input("Enter stock ticker:", "2380.SR")
-    start_date = st.date_input("Start date:", datetime.now() - timedelta(days=365*10))
+    start_date = st.date_input("Start date:", datetime.now() - timedelta(days=365*12))
     end_date = st.date_input("End date:", datetime.now())
     model_choice = st.selectbox("Select model:", ("RandomForest",
                                                   # "KNN", "SVM", "logReg",
@@ -370,7 +312,7 @@ def garch(df):
     model = arch_model(df, vol='EGARCH', p=1, q=1)
     results = model.fit()
 
-    # Step 5: Predict the 3-day volatility
+    # Step 5: Predict the 7-day volatility
     forecast = results.forecast(horizon=7, method='simulation', simulations=1000)
     mean_volatility = np.mean(forecast.simulations.residual_variances[-1]) ** 0.5
     print("Predicted 7-day volatility:", mean_volatility)
@@ -382,7 +324,11 @@ if st.button("Predict"):
     # print(pd.read_csv('feature_list.csv')['Feature'].to_list())
     df = download_stock_data(ticker, start_date, end_date)
     print(df)
-    data_process = data_processing()
+    print(df['Adj Close'][-1])
+    df_ = df.copy()
+    data_process = data_processing(df_)
+    # print(df)
+    # print(data_process)
 
     # Monte Carlo Simulation chart
     st.title('Monte Carlo Simulations')
@@ -391,13 +337,13 @@ if st.button("Predict"):
                                monte_carlo_chart[2], monte_carlo_chart[3]))
     st.text(f'Upper bound of the price in 7 trading days: {round(monte_carlo_chart[1][-1],2)}')
     st.text(f'Lower bound of the price in 7 trading days: {round(monte_carlo_chart[2][-1], 2)}')
-
-
-    predictions, accuracy = predict_stock_price(df, data_process, model_choice)
-    # final_capital = backtest(df, predictions)
+#
+#
+    predictions, accuracy, preds = predict_stock_price(data_process, model_choice)
+#     # final_capital = backtest(df, predictions)
     returns = generate_returns_series(df, predictions)
-
-
+#
+#
     # Stock Price History chart
     stock_chart = plot_stock_data(df)
     col1.plotly_chart(stock_chart, use_container_width=True)
@@ -411,14 +357,17 @@ if st.button("Predict"):
 
     garch_ = garch((df))
     last_price = df['Adj Close'][-1]
-    if predictions[-1] == 1:
+    if preds == 1:
         pred_price = last_price*(1+garch_/100)
         signal = 'BUY'
     else:
         pred_price = last_price*(1-garch_/100)
         signal = 'SELL or do nothing'
 
-    print(predictions)
+    # print(predictions)
+    print(pd.DataFrame(preds).value_counts())
+    print(pd.DataFrame(predictions).value_counts())
+
 
 
 if accuracy is not None:
