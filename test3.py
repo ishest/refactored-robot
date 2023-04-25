@@ -55,8 +55,6 @@ def display_backtest_statistics(returns):
     st.write(summary_stats.loc[['Sharpe ratio', 'Annual volatility', 'Max drawdown', 'Annual return']])
 
 
-
-
 def plot_stock_data(df):
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=df.index,
